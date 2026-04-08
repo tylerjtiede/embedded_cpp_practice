@@ -1016,7 +1016,113 @@ The compiler may not realize the pointers are aliased and can make incorrect opt
 
 ## constexpr
 
-*(coming soon)*
+`constexpr` means "evaluate this at compile time." The value is computed and baked into the binary before your program ever runs.
+
+### const vs constexpr
+
+```cpp
+const int x = 100;          // const — can't modify, but might be runtime
+const int y = getValue();   // const — definitely runtime, getValue() runs at runtime
+
+constexpr int x = 100;          // must be known at compile time AND can't be modified
+constexpr int y = getValue();   // only works if getValue() is also constexpr
+```
+
+`const` just means "can't modify after initialization." `constexpr` means "must be known at compile time AND can't be modified."
+
+### Basic usage
+
+```cpp
+constexpr int MAX_VALUE    = 100;
+constexpr int BUFFER_SIZE  = 64 * 1024;   // compiler computes 65536 at compile time
+constexpr float PI         = 3.14159f;
+constexpr bool DEBUG       = false;
+```
+
+### Why it matters — compile time constants unlock things runtime values can't
+
+```cpp
+constexpr int SIZE = 256;
+uint8_t buffer[SIZE];        // works — array size must be compile time constant
+
+const int size = 256;
+uint8_t buffer[size];        // works in practice but technically implementation defined
+
+int size = 256;
+uint8_t buffer[size];        // VLA — variable length array, not standard C++
+```
+
+### static constexpr for class constants
+
+```cpp
+class Sensor {
+    // non-static const — every instance gets its own copy, wasteful
+    const int m_maxValue = 100;
+
+    // static const — one copy shared across all instances, old style
+    static const int MAX_VALUE = 100;
+
+    // static constexpr — one copy, guaranteed compile time, modern preferred style
+    static constexpr int MAX_VALUE     = 100;
+    static constexpr float THRESHOLD   = 0.5f;
+    static constexpr int BUFFER_SIZE   = 64 * 1024;  // compiler does the math
+};
+```
+
+`static` — belongs to the class, not any instance. One copy shared by all objects.
+`constexpr` — guaranteed compile time. Can be used anywhere a compile time constant is needed.
+
+### constexpr functions
+
+Functions can also be `constexpr` — the compiler evaluates them at compile time if all inputs are compile time constants:
+
+```cpp
+constexpr int square(int x) {
+    return x * x;
+}
+
+constexpr int val = square(5);   // computed at compile time — val = 25
+int runtime = square(n);         // n unknown at compile time — runs at runtime
+```
+
+### Value initialization with {}
+
+Related to constexpr — you'll often see member variables initialized with `{}`:
+
+```cpp
+private:
+    int m_count = {};      // initialized to 0
+    float m_value = {};    // initialized to 0.0f
+    bool m_active = {};    // initialized to false
+    int* m_ptr = {};       // initialized to nullptr
+```
+
+`{}` is universal zero initialization — works for any type without needing to know the specific zero value. Also prevents narrowing conversions:
+
+```cpp
+int x = 3.14;    // compiles, silently truncates to 3
+int x = {3.14};  // compiler error — narrowing conversion not allowed
+```
+
+### m_ naming convention
+
+While not constexpr-specific, commonly seen alongside class member declarations:
+
+```cpp
+class Sensor {
+private:
+    float m_value = {};      // m_ prefix = member variable
+    bool  m_active = {};     // immediately distinguishes members from parameters
+    int   m_sampleRate = {};
+
+public:
+    void setValue(float value) {
+        m_value = value;     // clear which is member (m_value) and which is param (value)
+    }
+};
+```
+
+Common prefixes: `m_` = member, `g_` = global, `s_` = static, `p_` = pointer. Style varies by codebase — consistency matters more than which prefix you pick.
 
 ---
 
