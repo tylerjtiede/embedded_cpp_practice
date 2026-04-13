@@ -1014,6 +1014,112 @@ The compiler may not realize the pointers are aliased and can make incorrect opt
 
 ---
 
+## Linked Lists
+
+A linked list is a chain of nodes where each node contains data and a pointer to the next node. Nodes can be anywhere in memory — the pointers stitch them into a logical sequence regardless of physical location.
+
+```
+array in memory — contiguous:
+[1][2][3][4][5]
+
+linked list in memory — scattered:
+[1|ptr] -> [3|ptr] -> [2|ptr] -> [5|ptr] -> null
+  ^            ^           ^          ^
+addr 1000   addr 5000   addr 2000  addr 8000
+```
+
+### Basic node structure
+
+```cpp
+struct Node {
+    int data;
+    Node* next;   // pointer to next node — nullptr if last node
+};
+
+Node* head = nullptr;   // start of the list
+
+// insert at front
+Node* newNode = new Node();
+newNode->data = 42;
+newNode->next = head;
+head = newNode;
+
+// traverse
+Node* current = head;
+while (current != nullptr) {
+    std::cout << current->data << std::endl;
+    current = current->next;
+}
+```
+
+### Array vs linked list tradeoffs
+
+| Operation | Array | Linked List |
+|-----------|-------|-------------|
+| Random access | O(1) — direct index | O(n) — must traverse |
+| Insert at middle | O(n) — shift elements | O(1) — update pointers |
+| Insert at front/back | O(n) / O(1) | O(1) |
+| Cache friendliness | High — contiguous memory | Low — nodes scattered |
+| Memory overhead | Low | Higher — pointer per node |
+
+**Insertion in a linked list — just update two pointers:**
+
+```
+before: A -> C
+after:  A -> B -> C
+
+change A's next to point to B
+set B's next to point to C
+done — nothing moved in memory
+```
+
+**Insertion in an array — shift everything:**
+
+```
+insert 99 at index 2:
+before: [1][2][3][4][5]
+after:  [1][2][99][3][4][5]   <- 3, 4, 5 all had to move
+```
+
+### Cache locality — why arrays are faster to traverse
+
+When the CPU reads memory it loads chunks called **cache lines** — typically 64 bytes. With an array, loading one element loads several neighbors since they are contiguous. Future accesses to those neighbors are essentially free — already in cache. This is **spatial locality**.
+
+With a linked list, each node can be anywhere in memory. Following a pointer to the next node likely causes a **cache miss** — the CPU has to fetch that memory from RAM, which is slow. On a microcontroller this cost is significant.
+
+This is why the blanket statement "arrays are more cache friendly than linked lists" needs nuance — linked lists are better for middle insertion, arrays are better for traversal and random access.
+
+### Embedded pattern — node pool
+
+Heap allocating each node individually is unpredictable and slow. A common embedded solution is to pre-allocate a fixed pool of nodes from which you link as needed:
+
+```cpp
+static constexpr int MAX_NODES = 32;
+Node nodePool[MAX_NODES];    // pre-allocated on stack or data segment
+bool inUse[MAX_NODES] = {};  // track which nodes are free
+
+// allocate from pool — no heap, deterministic
+Node* allocNode() {
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (!inUse[i]) {
+            inUse[i] = true;
+            return &nodePool[i];
+        }
+    }
+    return nullptr;   // pool exhausted
+}
+```
+
+You get the insertion flexibility of a linked list with the predictable memory of a fixed array. The commenter's point about fitting nodes on the same cache line refers to this — if your node pool is an array, nodes allocated sequentially will be contiguous in memory and cache-friendly even though they're linked.
+
+### When to use each in embedded
+
+- **Array / std::array** — default choice. Fixed size, fast traversal, cache friendly, predictable memory.
+- **Linked list** — when you need frequent middle insertion/deletion and traversal speed is less critical.
+- **Node pool linked list** — when you need linked list flexibility but can't afford heap allocation at runtime.
+
+---
+
 ## constexpr
 
 `constexpr` means "evaluate this at compile time." The value is computed and baked into the binary before your program ever runs.
@@ -1123,6 +1229,168 @@ public:
 ```
 
 Common prefixes: `m_` = member, `g_` = global, `s_` = static, `p_` = pointer. Style varies by codebase — consistency matters more than which prefix you pick.
+
+---
+
+---
+
+## Interrupts
+
+The CPU normally executes instructions sequentially. An interrupt is a signal from hardware that says "stop what you're doing, handle this urgent event, then come back."
+
+```
+normal execution:
+instruction 1
+instruction 2
+instruction 3  <- interrupt fires here
+    |
+    v
+ISR (Interrupt Service Routine) runs
+    |
+    v
+instruction 4  <- resumes here
+instruction 5
+```
+
+The CPU saves its current state (registers, program counter), jumps to the handler, executes it, restores state, and continues. The interrupted code has no idea this happened.
+
+### Types of interrupts
+
+**Hardware interrupts — triggered by external hardware:**
+- Timer interrupt — fires at regular intervals (e.g. every 1ms)
+- GPIO interrupt — pin changed state (button pressed, signal received)
+- UART interrupt — data arrived on serial port
+- I2C interrupt — I2C transaction complete
+- ADC interrupt — analog to digital conversion complete
+- DMA interrupt — data transfer complete
+
+**Error/fault interrupts:**
+- Hard fault — illegal memory access, invalid instruction
+- Watchdog interrupt — system hasn't responded in time
+
+**Software interrupts:**
+- System calls — requesting OS services
+- Exceptions — divide by zero, null pointer dereference
+
+### Timer interrupt vs error interrupt
+
+| | Timer Interrupt | Error Interrupt |
+|---|---|---|
+| Fires | Predictably, at fixed interval | Unexpectedly, when something goes wrong |
+| Expected | Yes — you set it up intentionally | No |
+| Handler job | Increment counter, sample sensor, schedule task | Diagnose, recover, or fail safely |
+| Risk | Low | High — can cause interrupt storm |
+
+### Interrupt storm — the infinite loop problem
+
+If an error interrupt fires and the handler doesn't clear the error condition, the interrupt fires again immediately after returning — the CPU gets stuck in the handler forever:
+
+```cpp
+// BAD — forgot to clear the error flag
+void ERROR_IRQHandler() {
+    logError();
+    // error flag still set — interrupt fires again immediately
+}   // infinite loop, CPU never returns to normal code
+
+// GOOD — always clear the interrupt source
+void ERROR_IRQHandler() {
+    logError();
+    clearErrorFlag();      // tell hardware we handled it
+    resetErrorSource();    // fix the condition that caused it
+}   // returns cleanly, interrupt won't immediately re-fire
+```
+
+### Coding interrupts in C++
+
+On bare metal, the handler name must match the interrupt vector table exactly:
+
+```cpp
+// extern "C" = use C-style naming — required because C++ mangles function names
+// the vector table expects a specific name, mangling would break the lookup
+extern "C" void TIMER0_IRQHandler() {
+    tickCount++;
+    TIMER0->SR &= ~(1 << 0);   // clear interrupt flag — MUST do this
+}
+```
+
+On embedded Linux, handlers are registered through the kernel driver interface rather than mapping directly to a vector.
+
+### Critical rules for interrupt handlers
+
+```
+1. Keep them SHORT — CPU can't do anything else while in the handler
+2. Never block — no mutexes, no sleep, no waiting
+3. Never allocate heap memory — new/malloc can block
+4. Always clear the interrupt flag — or it fires again immediately
+5. Mark shared variables volatile — compiler must re-read them every time
+6. Use atomics or disable interrupts for shared data access
+```
+
+### Shared data between interrupt handler and main thread
+
+You can't use a mutex in an interrupt handler — mutexes can block, handlers must never block. If the mutex is held when the interrupt fires, the handler tries to lock it, blocks, but the thread holding the mutex is now suspended waiting for the interrupt to finish — deadlock.
+
+**Option 1 — volatile + disable interrupts briefly:**
+
+```cpp
+volatile int sharedData = 0;
+volatile bool dataReady = false;
+
+void UART_IRQHandler() {
+    sharedData = UART->DR;     // read hardware register
+    dataReady = true;          // signal main thread
+    UART->SR &= ~(1 << 5);    // clear interrupt flag
+}
+
+void mainLoop() {
+    if (dataReady) {
+        __disable_irq();           // disable interrupts — critical section
+        int data = sharedData;
+        dataReady = false;
+        __enable_irq();            // re-enable interrupts
+
+        processData(data);
+    }
+}
+```
+
+**Option 2 — std::atomic (preferred in modern C++):**
+
+```cpp
+#include <atomic>
+std::atomic<int>  sharedData{0};
+std::atomic<bool> dataReady{false};
+
+void UART_IRQHandler() {
+    sharedData.store(UART->DR);   // atomic write — guaranteed uninterruptible
+    dataReady.store(true);
+}
+
+void mainLoop() {
+    if (dataReady.load()) {        // atomic read
+        int data = sharedData.load();
+        dataReady.store(false);
+        processData(data);
+    }
+}
+```
+
+`std::atomic` guarantees the operation completes without interruption — no mutex needed, no disabling interrupts needed.
+
+**Option 3 — circular buffer (best for streaming data):**
+
+The cleanest solution for interrupt-to-main-thread communication. The interrupt handler writes into it, the main thread reads from it. Designed to be safe for single producer/single consumer without locks. See the Circular Buffer section.
+
+### Interrupts vs threads
+
+| | Thread | Interrupt |
+|---|---|---|
+| Triggered by | Software scheduler | Hardware event |
+| Preempts current thread | No | Yes — immediately |
+| Can block | Yes | No |
+| Heap allocation | Yes | No |
+| Shared variables need | `mutex` | `volatile` + atomic or disable interrupts |
+| Response time | Depends on scheduler | Immediate — microseconds |
 
 ---
 
