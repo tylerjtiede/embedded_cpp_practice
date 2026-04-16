@@ -1783,7 +1783,144 @@ The interrupt handler writes into the buffer, the main thread reads from it at i
 
 ## Move Semantics
 
-*(coming soon)*
+Move semantics let you transfer ownership of resources instead of copying them. If an object is about to be destroyed anyway, why copy its data? Just take it.
+
+### lvalues vs rvalues
+
+```cpp
+int x = 5;        // x is an lvalue — has a name, persists, can take its address (&x)
+int y = x + 1;    // (x + 1) is an rvalue — temporary, no name, about to be destroyed
+```
+
+- **lvalue** — has a name, persists beyond the expression, can take its address
+- **rvalue** — temporary, no name, about to be destroyed
+
+### The problem without move semantics
+
+```cpp
+std::vector<int> makeVector() {
+    std::vector<int> v = {1, 2, 3, 4, 5};
+    return v;   // without move: copies the entire internal buffer
+}
+
+std::vector<int> result = makeVector();  // another copy — expensive
+```
+
+### Copy vs move
+
+```cpp
+std::vector<int> a = {1, 2, 3, 4, 5};
+
+// copy — duplicates all data, both objects own their own buffer
+std::vector<int> b = a;              // b gets its own copy, a unchanged
+
+// move — transfers ownership, source left empty
+std::vector<int> c = std::move(a);   // c takes a's buffer, a is now empty
+// don't use a after moving from it
+```
+
+### std::move doesn't actually move anything
+
+`std::move` is just a cast — it converts an lvalue into an rvalue reference, signaling "treat this as a temporary, you can steal from it." The actual stealing happens in the move constructor.
+
+```cpp
+std::move(a)   // just says "a is now rvalue, steal from it"
+               // the vector's move constructor does the actual work
+```
+
+### Rvalue reference — &&
+
+`&&` is an rvalue reference. Only binds to temporaries or things explicitly `std::move`d. The compiler calls the move constructor instead of the copy constructor when it sees `&&`.
+
+```cpp
+// copy constructor — takes lvalue reference
+Buffer(const Buffer& other) {
+    m_data = new uint8_t[other.m_size];
+    memcpy(m_data, other.m_data, other.m_size);   // copy every byte — expensive
+}
+
+// move constructor — takes rvalue reference
+Buffer(Buffer&& other) {
+    m_data = other.m_data;    // steal the pointer — O(1)
+    m_size = other.m_size;
+    other.m_data = nullptr;   // leave source empty — safe to destruct
+    other.m_size = 0;
+}
+```
+
+### Where you'll see this in practice
+
+```cpp
+// unique_ptr — can only be moved, not copied
+std::unique_ptr<Sensor> s = std::make_unique<Sensor>(10.5f);
+std::unique_ptr<Sensor> s2 = std::move(s);   // s is now null, s2 owns it
+// std::unique_ptr<Sensor> s3 = s;           // compile error — copy disabled
+
+// inserting into containers
+std::vector<std::string> names;
+std::string name = "tyler";
+names.push_back(std::move(name));   // moves name into vector, name now empty
+
+// emplace_back — constructs directly inside the vector, no temporary at all
+names.emplace_back("alice");        // passes "alice" to string constructor in place
+// push_back creates a temporary then moves it — emplace_back skips the temporary
+```
+
+### push_back vs emplace_back
+
+```cpp
+std::vector<Sensor> sensors;
+
+// push_back — constructs a temporary Sensor, then moves it into the vector
+sensors.push_back(Sensor(10.5f));
+
+// emplace_back — passes 10.5f directly to Sensor's constructor inside the vector
+// no temporary created — constructed in place in the vector's memory
+sensors.emplace_back(10.5f);
+```
+
+`emplace_back` is preferred — never worse, sometimes better.
+
+### = delete — explicitly disabling copy
+
+```cpp
+class NonCopyable {
+public:
+    NonCopyable(const NonCopyable&) = delete;             // copy constructor disabled
+    NonCopyable& operator=(const NonCopyable&) = delete;  // copy assignment disabled
+    NonCopyable(NonCopyable&&) = default;                 // move is fine
+};
+```
+
+`unique_ptr` does exactly this — copying is deleted, moving is allowed. That's why you can't copy a `unique_ptr`.
+
+### The rule of five
+
+If your class manages a resource (heap memory, file handle), define all five:
+
+```cpp
+class Buffer {
+public:
+    ~Buffer();                              // 1. destructor
+    Buffer(const Buffer&);                  // 2. copy constructor
+    Buffer& operator=(const Buffer&);       // 3. copy assignment
+    Buffer(Buffer&&);                       // 4. move constructor
+    Buffer& operator=(Buffer&&);            // 5. move assignment
+};
+```
+
+If you define any one of these, the compiler's assumptions about the others break down — define all five.
+
+### Key takeaways
+
+- Move semantics avoid expensive copies when the source is a temporary or being discarded
+- `std::move` is just a cast to rvalue reference — signals "steal from this"
+- `&&` = rvalue reference — only binds to temporaries or moved-from objects
+- `unique_ptr` can be moved but not copied — enforced at compile time with `= delete`
+- `emplace_back` constructs in place — no temporary, preferred over `push_back`
+- After `std::move(x)`, don't use `x` — it's in a valid but empty state
+
+
 
 ---
 
