@@ -30,51 +30,296 @@
 
 ## Glossary
 
+Terms are grouped by category. If an interviewer uses a word you don't recognize, it's likely here.
+
+### Object-oriented programming
+
+**Access modifier / access specifier** — `public`, `private`, or `protected`. Controls who can access a class member.
+- `public` — accessible from anywhere
+- `private` — only accessible inside the class itself
+- `protected` — accessible inside the class AND derived classes
+
+```cpp
+class Sensor {
+private:    // only Sensor methods can access these
+    float value;
+protected:  // Sensor and any derived class can access these
+    bool active;
+public:     // anyone can access these
+    float getValue() const { return value; }
+};
+```
+
 **Polymorphism** — "many forms." The ability to treat different types through a common interface. A `TemperatureSensor` and a `PressureSensor` are both `Sensor`s — you can call `describe()` on either through a `Sensor&` reference and each responds correctly. Runtime polymorphism uses virtual functions. Compile time polymorphism uses templates.
 
 **Abstraction** — hiding complexity behind a simple interface. You call `sensor.getValue()` without knowing how it reads hardware.
 
 **Encapsulation** — bundling data and the methods that operate on it into one class, controlling access with `private`/`public`. Prevents outside code from putting an object in an invalid state.
 
-**Inheritance** — a derived class takes on all members of a base class. Models "is-a" relationships: a `TemperatureSensor` IS A `Sensor`.
+**Inheritance** — a derived class takes on all members of a base class. Models "is-a" relationships: a `TemperatureSensor` IS A `Sensor`. The four pillars of OOP are encapsulation, abstraction, inheritance, and polymorphism.
+
+**Base class / parent class / superclass** — the class being inherited from. All the same thing, different terms.
+
+**Derived class / child class / subclass** — the class that inherits. All the same thing.
+
+**Constructor** — special method called automatically when an object is created. Same name as the class, no return type.
+
+**Destructor** — special method called automatically when an object goes out of scope. Same name as class prefixed with `~`. No arguments, no return type.
+
+**Initializer list** — the `: member(value)` syntax in a constructor. Sets member variables before the constructor body runs. Preferred over assignment inside the body.
+
+**Method / member function** — a function defined inside a class. Same thing, different terms.
+
+**Member variable / data member / field** — a variable defined inside a class. All the same thing.
+
+**Instance / object** — a specific realization of a class. `Sensor s(10.5f)` creates an instance called `s`.
+
+**Instantiation** — the act of creating an instance from a class definition.
+
+**this pointer** — inside a method, `this` is a pointer to the current object. Used to disambiguate member variables from parameters with the same name.
+
+**Virtual function** — a method that can be overridden in derived classes with runtime dispatch via vtable.
+
+**Pure virtual function** — a virtual function with `= 0`. Makes the class abstract — cannot be instantiated directly.
+
+**Abstract class** — a class with at least one pure virtual function. Can only be used as a base class. Defines an interface that derived classes must implement.
+
+**Interface** — in C++ typically a class with only pure virtual functions. Defines what a class must do without saying how.
+
+**Override** — replacing a virtual base class method with a derived class implementation. The `override` keyword makes this explicit and lets the compiler verify it.
 
 **Virtual dispatch / dynamic dispatch** — the mechanism behind runtime polymorphism. When you call a virtual method through a base class reference, the program looks up the correct implementation at runtime via the vtable.
 
-**Vtable (virtual table)** — a hidden lookup table the compiler generates for classes with virtual methods. Each object carries a hidden pointer to its vtable. The vtable maps virtual method calls to the correct implementation for that type.
+**Vtable (virtual table)** — a hidden lookup table the compiler generates for classes with virtual methods. Each object carries a hidden pointer to its vtable.
 
-**Static vs Dynamic** — static = decided at compile time. Dynamic = decided at runtime. Static dispatch = compiler picks the function. Dynamic dispatch = vtable lookup at runtime.
+**Object slicing** — when you store a derived class object in a base class variable (not pointer), the derived parts get cut off. Reason to store `unique_ptr<Sensor>` in containers instead of `Sensor` directly.
 
-**RAII (Resource Acquisition Is Initialization)** — resource lifetime is tied to object lifetime. Acquire in constructor, release in destructor. When the object goes out of scope, cleanup happens automatically. `unique_ptr` is RAII for heap memory.
+**Friend** — a function or class declared `friend` inside a class gets access to its private members. Used sparingly.
 
-**Object slicing** — when you store a derived class object in a base class variable (not pointer), the derived parts get cut off. Only the base class portion survives. Reason to store `unique_ptr<Sensor>` in containers instead of `Sensor` directly.
+**Operator overloading** — defining custom behavior for operators (`+`, `==`, `<<` etc.) for user-defined types.
 
-**Scope** — the region of code where a variable is valid. Local variables go out of scope at the closing `}` of their block. Going out of scope triggers destructors.
+---
 
-**Dereference** — following a pointer to get the value at its address. `*ptr` = go to that address. `ptr->method()` = dereference and call method.
+### Memory and pointers
 
-**Undefined behavior (UB)** — code the C++ standard makes no guarantees about. Might crash, might corrupt memory, might appear to work. Common causes: null pointer dereference, out of bounds access, writing to read-only memory, using memory after `delete`.
+**Pointer** — a variable that stores a memory address.
 
-**Overhead** — extra cost in time or memory. Vtable lookup = small runtime overhead. Heap allocation = more overhead than stack. Embedded engineers minimize overhead because resources are constrained.
+**Dereference** — following a pointer to get the value at its address. `*ptr` = go to that address.
 
-**Deterministic** — predictable and consistent every time. Stack allocation is deterministic. Heap allocation is not. Real-time embedded systems require deterministic behavior.
+**Address-of operator** — `&` when applied to a variable gives its memory address. `&x` = "the address of x."
 
-**SWaP** — Size, Weight, and Power. The three binding constraints in fielded military hardware.
+**Null pointer** — a pointer holding address `0` (`nullptr`). Dereferencing it causes a segfault on Linux or silent corruption on bare metal.
 
-**Segfault** — crash caused by accessing memory you're not allowed to touch. Most common cause: null pointer dereference. On Linux the OS kills the process. On bare metal embedded it might corrupt memory silently.
+**Dangling pointer** — a pointer that points to memory that has been freed or gone out of scope. Using it is undefined behavior.
 
-**Instantiation** — creating an actual object from a class definition, or generating code from a template for a specific type.
+**Memory leak** — heap memory that was allocated but never freed. Accumulates over time and can exhaust memory.
 
-**Declaration vs Definition** — declaration tells the compiler something exists (`void foo();`). Definition is the actual implementation (`void foo() { ... }`). You can declare many times, define only once.
+**Stack** — fast, automatic memory for local variables. Cleaned up when variables go out of scope. Limited size.
+
+**Heap** — large, dynamic memory. Allocated with `new`/`make_unique`. Must be freed manually or via smart pointer.
+
+**RAII (Resource Acquisition Is Initialization)** — resource lifetime is tied to object lifetime. Acquire in constructor, release in destructor. When the object goes out of scope, cleanup happens automatically.
+
+**Smart pointer** — a class that wraps a raw pointer and manages its lifetime automatically. `unique_ptr`, `shared_ptr`, `weak_ptr`.
+
+**unique_ptr** — single-owner smart pointer. Automatically deletes when it goes out of scope. Cannot be copied, only moved.
+
+**shared_ptr** — multiple-owner smart pointer. Reference counted — freed when the last owner goes out of scope.
+
+**Scope** — the region of code where a variable is valid. Local variables go out of scope at the closing `}` of their block.
+
+**Segfault (segmentation fault)** — crash caused by accessing memory you're not allowed to touch.
+
+**Undefined behavior (UB)** — code the C++ standard makes no guarantees about. Might crash, might corrupt memory, might appear to work.
+
+**Stack overflow** — the stack exceeds its maximum size. On a microcontroller can corrupt hardware state silently.
+
+**Memory-mapped I/O** — hardware peripherals accessed by reading and writing specific memory addresses. Same instructions as normal memory access.
+
+**volatile** — keyword telling the compiler a variable can change outside normal program flow. Prevents the compiler from optimizing away reads. Required for hardware registers and variables shared with interrupt handlers.
+
+**Aliasing** — two pointers referring to overlapping memory. Legal but dangerous — compiler may make incorrect optimization assumptions.
+
+---
+
+### C++ language features
+
+**Declaration** — tells the compiler something exists (`void foo();`). No implementation.
+
+**Definition** — the actual implementation (`void foo() { ... }`). Can only have one per program (One Definition Rule).
+
+**Forward declaration** — declaring something before defining it, so the compiler knows it exists.
+
+**Namespace** — a named scope that groups identifiers to prevent naming conflicts. `std::` is the standard library namespace.
 
 **Template** — a blueprint for generating code for multiple types at compile time. Zero runtime overhead vs virtual functions.
 
-**Race condition** — two threads access the same data simultaneously and the result depends on timing. `counter++` is actually three operations — read, modify, write. Another thread can jump in between any of them.
+**constexpr** — evaluated at compile time. Guaranteed to be a compile time constant. More strict than `const`.
 
-**Mutex (mutual exclusion)** — a lock. Only one thread can hold it at a time. Others block and wait. Prevents race conditions.
+**const** — cannot be modified after initialization. May still be evaluated at runtime.
 
-**Deadlock** — thread A holds lock 1 waiting for lock 2, thread B holds lock 2 waiting for lock 1. Both wait forever. Fix: always acquire multiple locks in the same order.
+**static** (in a class) — belongs to the class itself, not any instance. One copy shared by all objects.
 
-**Interrupt** — hardware-triggered event that preempts whatever is running, executes a handler, then returns. Must be fast — no blocking, no heap allocation. Variables shared with interrupt handlers need `volatile`.
+**static** (local variable) — allocated once in data segment, persists between function calls.
+
+**inline** — hint to compiler to expand the function at call site. Eliminates function call overhead.
+
+**explicit** — prevents implicit conversions. A constructor marked `explicit` can't be used for implicit type conversion.
+
+**auto** — compiler infers the type automatically. `auto x = 5;` — x is an `int`.
+
+**nullptr** — the null pointer constant. Type-safe replacement for `NULL` or `0`.
+
+**Reference** — an alias for an existing variable. Same memory, different name. Must be bound at declaration, can't be null, can't be rebound.
+
+**Initializer list (`{}`)** — universal zero initialization. `int x = {}` initializes to 0. Prevents narrowing conversions.
+
+**Range-based for loop** — `for (const auto& x : container)`. Iterates over each element without needing an index.
+
+**Lambda** — an anonymous inline function. `[&](int x) { return x * 2; }`. The `[&]` captures local variables by reference.
+
+**Operator `->>`** — dereference and access member. `ptr->method()` is shorthand for `(*ptr).method()`.
+
+**Scope resolution operator (`::`)** — accesses a name within a namespace or class. `std::cout`, `Sensor::getValue`.
+
+**One Definition Rule (ODR)** — each function, variable, or class can only be defined once across the entire program.
+
+**Header guard / include guard** — `#pragma once` or `#ifndef` pattern. Prevents a header from being included multiple times.
+
+**Preprocessor directive** — lines starting with `#`. Processed before compilation. `#include`, `#define`, `#ifdef`, `#pragma`.
+
+**Macro** — a preprocessor text substitution defined with `#define`. `#define MAX(a,b) ((a)>(b)?(a):(b))`.
+
+**Ternary operator** — `condition ? value_if_true : value_if_false`. One-line if/else that returns a value.
+
+**Cast** — explicitly converting one type to another. `(uint32_t*)0x40000000` — treat this number as a pointer to uint32_t.
+
+**Type qualifier** — `const` or `volatile`. Modifies the behavior of a type.
+
+---
+
+### Concurrency
+
+**Thread** — an independent sequence of execution. A program starts with one thread. Additional threads run concurrently.
+
+**Race condition** — two threads access the same data simultaneously and the result depends on timing.
+
+**Mutex (mutual exclusion)** — a lock. Only one thread can hold it at a time. Others block and wait.
+
+**lock_guard** — RAII wrapper for a mutex. Locks on construction, unlocks automatically when it goes out of scope.
+
+**scoped_lock** — acquires multiple mutexes atomically. Deadlock-safe — handles ordering internally.
+
+**Deadlock** — thread A holds lock 1 waiting for lock 2, thread B holds lock 2 waiting for lock 1. Both wait forever.
+
+**Critical section** — a section of code that accesses shared data and must not be executed by more than one thread at a time.
+
+**Atomic** — an operation guaranteed to complete without interruption. `std::atomic<int>` reads and writes that can't be partially observed by another thread.
+
+**Context switch** — the OS saving one thread's state and loading another's. How the OS switches between threads.
+
+**Thread-safe** — code that behaves correctly when called from multiple threads simultaneously.
+
+**Interrupt** — hardware-triggered event that preempts whatever is running, executes a handler, then returns. Must be fast — no blocking, no heap allocation.
+
+**ISR (Interrupt Service Routine)** — the handler function that runs when an interrupt fires.
+
+**Interrupt vector table** — a table mapping interrupt numbers to handler function addresses. The CPU looks up the handler here when an interrupt fires.
+
+**Interrupt storm** — an interrupt that fires repeatedly because its source was never cleared. CPU gets stuck in the handler.
+
+**Spinlock** — a lock where the waiting thread loops continuously checking if the lock is free. Wastes CPU but avoids context switch overhead. Used in embedded when waits are very short.
+
+---
+
+### Embedded specific
+
+**SWaP** — Size, Weight, and Power. The three binding constraints in fielded military hardware.
+
+**BSP (Board Support Package)** — the lowest software layer. Knows the specifics of a particular circuit board — pin mappings, clock speeds, memory layout.
+
+**HAL (Hardware Abstraction Layer)** — a layer of software that provides a consistent interface to hardware regardless of the specific chip. Often includes the BSP and drivers.
+
+**Driver** — software that exposes a clean interface to a hardware peripheral. Hides register-level details.
+
+**Middleware** — software layer between drivers and application. Protocol handlers, message queues, data formatting.
+
+**RTOS (Real-Time Operating System)** — an OS designed for deterministic, time-critical embedded applications. Examples: FreeRTOS, Zephyr, VxWorks.
+
+**Deterministic** — predictable and consistent timing every time. Real-time systems require deterministic behavior.
+
+**Bare metal** — running directly on hardware with no OS. Maximum control, maximum responsibility.
+
+**Firmware** — software programmed into non-volatile memory on a device. Persists without power.
+
+**Bootloader** — small program that runs before the main application. Initializes hardware and loads firmware. Enables field updates.
+
+**Watchdog timer** — a hardware timer that resets the system if not regularly reset by software. Recovers from software hangs.
+
+**DMA (Direct Memory Access)** — hardware that transfers data between memory and peripherals without CPU involvement. Faster and frees the CPU.
+
+**GPIO (General Purpose Input/Output)** — pins on a microcontroller that can be configured as digital input or output.
+
+**Memory-mapped register** — a hardware register accessed by reading/writing a specific memory address.
+
+**Circular buffer / ring buffer** — a fixed-size buffer where read and write heads wrap around. Used for FIFO queues, especially between interrupt handlers and main thread.
+
+**FIFO (First In First Out)** — data comes out in the order it went in. A queue. Circular buffers implement FIFOs.
+
+**Cache line** — the unit of data the CPU loads from memory at once. Typically 64 bytes. Cache-friendly code keeps related data in the same cache line.
+
+**Cache miss** — accessing data that isn't in the CPU cache. Forces a slow fetch from RAM. Linked lists cause cache misses because nodes are scattered in memory.
+
+**Fixed-point arithmetic** — representing fractional numbers using integers with an implicit decimal point. Used in embedded when there's no hardware FPU. Avoids expensive floating-point operations.
+
+**Endianness** — the order bytes are stored in memory for multi-byte values. Little-endian = least significant byte first (most common). Big-endian = most significant byte first. Matters when sending data over a network or between different systems.
+
+---
+
+### Build and toolchain
+
+**Compiler** — translates source code to machine code. g++, clang++, armcc.
+
+**Linker** — combines compiled object files into an executable. Resolves references between files.
+
+**Object file (.o)** — compiled machine code with unresolved references. Output of compilation, input to linker.
+
+**Toolchain** — the complete set of tools to build software. Compiler + linker + assembler + libraries.
+
+**Cross-compiler** — a compiler that runs on one platform (your PC) but generates code for another (ARM microcontroller).
+
+**Makefile** — a file describing how to build a project. Rules for which files to compile and how to link them.
+
+**CMake** — a build system generator. Generates Makefiles or other build files from a higher-level description.
+
+**Yocto / Buildroot** — tools for building custom embedded Linux distributions from source.
+
+**Debug vs Release build** — debug includes symbols and disables optimizations (easier to debug). Release enables optimizations (faster, smaller). Asserts are typically compiled out in release.
+
+**Optimization level** — `-O0` no optimization, `-O1` basic, `-O2` standard, `-O3` aggressive, `-Os` optimize for size. Embedded often uses `-Os`.
+
+**Static analysis** — analyzing code without running it. Finds bugs like race conditions, null dereferences, memory leaks at compile time. Tools: Coverity, ThreadSanitizer, clang-tidy.
+
+---
+
+### Data structures
+
+**Array** — fixed-size contiguous block of memory. O(1) random access. Cache friendly.
+
+**Vector (std::vector)** — dynamic array. Grows automatically. Heap allocated internally.
+
+**Linked list** — chain of nodes connected by pointers. O(1) insertion, O(n) traversal. Poor cache locality.
+
+**Stack (data structure)** — LIFO (Last In First Out). Push adds to top, pop removes from top.
+
+**Queue** — FIFO (First In First Out). Enqueue adds to back, dequeue removes from front.
+
+**Hash map / unordered_map** — key-value store with O(1) average lookup. Like Python dict. Uses a hash function to find buckets.
+
+**Tree** — hierarchical data structure. Binary search tree gives O(log n) lookup.
+
+**Big O notation** — describes how an algorithm scales with input size. O(1) = constant, O(n) = linear, O(log n) = logarithmic, O(n²) = quadratic.
+
 
 ---
 
@@ -1391,6 +1636,142 @@ The cleanest solution for interrupt-to-main-thread communication. The interrupt 
 | Heap allocation | Yes | No |
 | Shared variables need | `mutex` | `volatile` + atomic or disable interrupts |
 | Response time | Depends on scheduler | Immediate — microseconds |
+
+---
+
+---
+
+## Circular Buffer (Ring Buffer)
+
+A fixed-size buffer where the write and read heads chase each other around in a circle. No shifting, no copying — just incrementing indices with modulo wrap-around. One of the most common data structures in embedded systems.
+
+### The problem it solves
+
+A producer (interrupt handler, hardware) generates data at one rate. A consumer (main thread) processes it at another rate. You need somewhere to store data in between without losing it and without blocking the producer.
+
+### How it works
+
+```
+buffer: [ ][ ][ ][ ][ ][ ][ ][ ]
+         ^                       ^
+        tail                   head
+       (read)                 (write)
+
+after writing A, B, C:
+[A][B][C][ ][ ][ ][ ][ ]
+ ^        ^
+tail     head
+
+after reading A, B:
+[A][B][C][ ][ ][ ][ ][ ]
+       ^  ^
+      tail head
+
+after writing D, E, F, G, H, I (head wraps around):
+[I][B][C][D][E][F][G][H]
+    ^  ^
+   tail head  <- head wrapped past end, overwrites old slot
+```
+
+Write head and read head chase each other around the buffer. When either reaches the end it wraps back to 0 using modulo. No elements ever move.
+
+### Modulo wrap-around
+
+```cpp
+// without modulo — manual wrap
+m_head++;
+if (m_head >= CAPACITY) m_head = 0;
+
+// with modulo — same thing, one line
+m_head = (m_head + 1) % CAPACITY;
+
+// example with CAPACITY = 8:
+// 7 % 8 = 7
+// 8 % 8 = 0  <- wraps
+// 9 % 8 = 1
+```
+
+### Implementation
+
+```cpp
+#include <cstdint>
+
+class CircularBuffer {
+private:
+    static constexpr int CAPACITY = 8;
+    uint8_t m_buffer[CAPACITY];
+    int m_head  = {};   // write index
+    int m_tail  = {};   // read index
+    int m_count = {};   // number of items currently in buffer
+
+public:
+    bool write(uint8_t data) {
+        if (m_count == CAPACITY) return false;   // full
+        m_buffer[m_head] = data;
+        m_head = (m_head + 1) % CAPACITY;
+        m_count++;
+        return true;
+    }
+
+    bool read(uint8_t& data) {   // reference parameter — writes into caller's variable
+        if (m_count == 0) return false;   // empty
+        data = m_buffer[m_tail];
+        m_tail = (m_tail + 1) % CAPACITY;
+        m_count--;
+        return true;
+    }
+
+    bool isFull()  const { return m_count == CAPACITY; }
+    bool isEmpty() const { return m_count == 0; }
+    int  count()   const { return m_count; }
+};
+```
+
+### Why read() takes a reference parameter
+
+Returning a value doesn't let you signal both success/failure AND provide the value simultaneously:
+
+```cpp
+// reference parameter pattern — idiomatic C++
+bool read(uint8_t& data) {
+    if (isEmpty()) return false;   // signal failure, data untouched
+    data = m_buffer[m_tail];       // write into caller's variable
+    return true;                   // signal success
+}
+
+// caller checks both:
+uint8_t val;
+if (buf.read(val)) {
+    process(val);   // val is valid
+} else {
+    // buffer was empty, val is untouched
+}
+```
+
+In modern C++ you'd use `std::optional` instead, but reference parameters work everywhere including restricted embedded environments.
+
+### Full vs empty distinction
+
+Both states have `m_count == 0` or `m_count == CAPACITY` — use a count to distinguish them. Alternative: waste one slot (buffer full when head is one behind tail) — avoids the count but wastes a slot.
+
+### Why circular buffers are used for interrupt-to-main communication
+
+- **No blocking** — interrupt handler can write without waiting
+- **No locks needed** for single producer / single consumer
+- **Fixed memory** — no heap allocation, deterministic
+- **FIFO ordering** — data comes out in the order it went in
+
+The interrupt handler writes into the buffer, the main thread reads from it at its own pace. As long as the main thread keeps up, no data is lost.
+
+### Properties
+
+| Property | Value |
+|----------|-------|
+| Write | O(1) |
+| Read | O(1) |
+| Memory | Fixed, stack allocated |
+| Thread safe | Yes for single producer/single consumer |
+| Heap allocation | None |
 
 ---
 
