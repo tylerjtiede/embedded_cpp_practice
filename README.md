@@ -214,6 +214,10 @@ public:     // anyone can access these
 
 **Critical section** — a section of code that accesses shared data and must not be executed by more than one thread at a time.
 
+**std::forward** — conditionally casts to rvalue reference. Used in template functions to preserve whether an argument was originally an lvalue or rvalue. Unlike `std::move` which always casts to rvalue, `std::forward` only casts to rvalue if the original argument was an rvalue. Used for "perfect forwarding" in template wrapper functions.
+
+**std::move** — casts an lvalue to an rvalue reference. Signals "you can steal from this." Doesn't actually move anything — the move constructor or move assignment operator does the actual work.
+
 **Atomic** — an operation guaranteed to complete without interruption. `std::atomic<int>` reads and writes that can't be partially observed by another thread.
 
 **Context switch** — the OS saving one thread's state and loading another's. How the OS switches between threads.
@@ -227,6 +231,8 @@ public:     // anyone can access these
 **Interrupt vector table** — a table mapping interrupt numbers to handler function addresses. The CPU looks up the handler here when an interrupt fires.
 
 **Interrupt storm** — an interrupt that fires repeatedly because its source was never cleared. CPU gets stuck in the handler.
+
+**Process** — a completely independent running program with its own memory space. Threads exist within a process and share its memory. Killing a process doesn't affect other processes. One thread crashing can kill its entire process.
 
 **Spinlock** — a lock where the waiting thread loops continuously checking if the lock is free. Wastes CPU but avoids context switch overhead. Used in embedded when waits are very short.
 
@@ -618,6 +624,26 @@ std::shared_ptr<Sensor> sp1 = std::make_shared<Sensor>(10.5f);
 std::shared_ptr<Sensor> sp2 = sp1;   // both own it, reference count = 2
 // freed when the LAST shared_ptr goes out of scope
 ```
+
+Internally shared_ptr maintains a control block on the heap containing two atomic reference counts — one for strong refs (shared_ptr) and one for weak refs (weak_ptr). Atomic means thread-safe increment/decrement without a mutex.
+
+### weak_ptr — non-owning observer
+
+Observes an object owned by `shared_ptr` without contributing to the reference count. Lets you check if the object still exists without keeping it alive:
+
+```cpp
+std::shared_ptr<Sensor> sp = std::make_shared<Sensor>(10.5f);
+std::weak_ptr<Sensor> wp = sp;   // doesn't increment refcount
+
+// must lock() to get a temporary shared_ptr before using
+if (auto locked = wp.lock()) {
+    locked->getValue();   // object still alive
+} else {
+    // object was deleted — sp went out of scope somewhere
+}
+```
+
+Primary use case — breaking circular references. If A holds a `shared_ptr` to B and B holds a `shared_ptr` to A, neither ever gets deleted (refcount never hits 0). Making one of them `weak_ptr` breaks the cycle.
 
 ### Why vector\<unique_ptr\<T\>\> instead of vector\<T\>
 
