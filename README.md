@@ -2110,6 +2110,190 @@ public:
 
 ---
 
+## Common C++ Pitfalls and Best Practices
+
+### std::endl vs \n
+
+`std::endl` does two things — prints a newline AND flushes the output buffer. Flushing is expensive, especially in a loop. Just use `\n`:
+
+```cpp
+std::cout << "hello\n";             // fast
+std::cout << "hello" << std::endl;   // slower — flushes buffer every time
+```
+
+### operator[] on map inserts if key missing
+
+Simply looking up a key that doesn't exist silently inserts it with a default value:
+
+```cpp
+std::unordered_map<std::string, int> m;
+std::cout << m["missing"];   // inserts "missing" -> 0, prints 0
+m.count("missing");          // now returns 1 — it exists!
+
+// safe alternatives — don't insert
+m.at("missing");                        // throws std::out_of_range if missing
+m.find("missing") != m.end();          // check existence without inserting
+m.count("missing");                    // check existence without inserting
+```
+
+### Structured bindings
+
+Cleaner way to unpack pairs, tuples, and structs with public members:
+
+```cpp
+std::unordered_map<std::string, std::string> phone_book;
+
+// old way
+for (const auto& pair : phone_book) {
+    std::cout << pair.first << " - " << pair.second << std::endl;
+}
+
+// structured binding — much more readable
+for (const auto& [name, number] : phone_book) {
+    std::cout << name << " - " << number << std::endl;
+}
+
+// also works for returning multiple values
+struct Result { int value; bool success; };
+auto [val, ok] = someFunction();
+```
+
+### Default vs value initialization
+
+```cpp
+int x;        // default initialized — GARBAGE value, undefined behavior to read
+int x = 0;    // value initialized — zero
+int x{};      // value initialized — zero, preferred modern style
+int x = {};   // same as above
+
+// for class members
+int m_count = {};    // zero initialized — always do this for primitives
+```
+
+When in doubt, initialize. The compiler optimizes it away if it can prove it's unnecessary.
+
+### const pointer vs pointer to const
+
+`const` applies to whatever is immediately to its LEFT. If it's the leftmost thing, it applies to the RIGHT.
+
+```cpp
+const int* ptr;      // pointer to const int — can't modify value, CAN move pointer
+int* const ptr;      // const pointer to int — CAN modify value, can't move pointer
+const int* const ptr; // both const — can't modify value OR move pointer
+```
+
+Memory trick: read right to left.
+- `const int*` — "pointer to int that is const"
+- `int* const` — "const pointer to int"
+
+### Don't std::move a return value
+
+`std::move` on a return value prevents Return Value Optimization (RVO) — the compiler optimization that eliminates the copy entirely. Moving is actually worse than not moving here:
+
+```cpp
+std::vector<int> makeVector() {
+    std::vector<int> v = {1, 2, 3};
+    return std::move(v);   // WRONG — prevents RVO, forces a move instead
+    return v;              // CORRECT — compiler eliminates copy entirely via RVO
+}
+```
+
+This is one of the few absolute rules: never `std::move` a local variable in a return statement.
+
+### shared_ptr is NOT fully thread safe
+
+The reference counting is atomic and thread safe. The object it points to is NOT:
+
+```cpp
+std::shared_ptr<int> shared = std::make_shared<int>(0);
+
+// thread 1
+*shared += 1;   // NOT thread safe — data race on the int
+
+// thread 2  
+*shared += 1;   // NOT thread safe
+```
+
+Reference counting protects against double-delete. It does NOT protect your data. You still need a mutex to protect the actual object.
+
+### Raw pointers aren't bad — they just don't own anything
+
+The convention in modern C++:
+- Raw pointer — non-owning, just reads or writes data
+- Smart pointer — owns the object, responsible for its lifetime
+
+```cpp
+// raw pointer fine here — not managing lifetime
+void process(const Sensor* s) {
+    s->getValue();   // just reading, no ownership
+}
+
+// smart pointer when ownership is involved
+std::unique_ptr<Sensor> s = std::make_unique<Sensor>(10.5f);
+process(s.get());   // pass raw pointer to function that doesn't own it
+```
+
+### reinterpret_cast — almost always wrong
+
+Nearly every use of `reinterpret_cast` is undefined behavior. The only safe use is casting to a character type to inspect raw bytes:
+
+```cpp
+int x = 42;
+char* bytes = reinterpret_cast<char*>(&x);   // ok — inspect bytes
+// everything else is UB
+
+// C-style casts (int*)ptr have the same problem — avoid them
+```
+
+### Magic numbers — always name them
+
+```cpp
+// bad
+if (speed > 255) { }
+uint8_t buffer[256];
+
+// good
+static constexpr int MAX_SPEED = 255;
+static constexpr int BUFFER_SIZE = 256;
+if (speed > MAX_SPEED) { }
+uint8_t buffer[BUFFER_SIZE];
+```
+
+Compiler optimizes it away anyway. No cost, much more readable.
+
+### Modifying a container while iterating over it
+
+Adding or removing elements during a loop can invalidate iterators:
+
+```cpp
+std::vector<int> v = {1, 2, 3, 4, 5};
+
+// WRONG — push_back may reallocate, invalidating end iterator
+for (auto it = v.begin(); it != v.end(); ++it) {
+    v.push_back(*it);   // undefined behavior
+}
+
+// CORRECT — use index, stays valid even after reallocation
+int size = v.size();
+for (int i = 0; i < size; i++) {
+    v.push_back(v[i]);
+}
+```
+
+### using namespace std — don't
+
+Especially in header files. Dumps all standard library names into the global namespace, causes silent naming conflicts. Either use `std::` prefix or import only what you need:
+
+```cpp
+using std::cout;    // ok — specific import
+using std::string;  // ok — specific import
+using namespace std; // bad — imports everything
+```
+
+Never put `using namespace` in a header file — forces it on everyone who includes your header.
+
+---
+
 ## Header Guards
 
 
