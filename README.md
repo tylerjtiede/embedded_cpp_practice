@@ -1807,6 +1807,138 @@ The interrupt handler writes into the buffer, the main thread reads from it at i
 
 ---
 
+---
+
+## Templates
+
+A template is a blueprint for generating code for multiple types at compile time. Write the logic once, the compiler generates a separate version for each type you actually use.
+
+### Function templates
+
+```cpp
+// without templates — must write for every type
+int maxInt(int a, int b)     { return a > b ? a : b; }
+float maxFloat(float a, float b) { return a > b ? a : b; }
+
+// with templates — write once, works for any type
+template<typename T>
+T max(T a, T b) { return a > b ? a : b; }
+
+max(1, 2);        // compiler generates int version
+max(1.5f, 2.5f);  // compiler generates float version
+max(1.0, 2.0);    // compiler generates double version
+```
+
+### Class templates
+
+```cpp
+template<typename T>
+class Box {
+private:
+    T m_value;
+public:
+    Box(T value) : m_value(value) { }
+    T get() const { return m_value; }
+};
+
+Box<int>    intBox(42);
+Box<float>  floatBox(3.14f);
+Box<Sensor> sensorBox(Sensor(10.5f));
+```
+
+You've been using class templates the whole time — `std::vector<int>`, `std::unique_ptr<Sensor>`, `std::unordered_map<string, int>` are all template instantiations. The `<type>` in angle brackets is the template parameter.
+
+### typename vs class
+
+```cpp
+template<typename T>   // preferred modern style
+template<class T>      // older style — identical meaning
+```
+
+Both mean exactly the same thing. `typename` is preferred in modern C++.
+
+### How templates work — compile time instantiation
+
+When you write `max(1, 2)` the compiler sees T = int and generates:
+
+```cpp
+int max(int a, int b) { return a > b ? a : b; }
+```
+
+When you write `max(1.5f, 2.5f)` it generates a separate float version. Each type you use gets its own compiled function. This is called **template instantiation**.
+
+### Compile time vs runtime polymorphism
+
+```cpp
+// runtime polymorphism — virtual functions
+// one implementation, vtable lookup at runtime, small overhead
+void process(Animal& a) { a.speak(); }
+
+// compile time polymorphism — templates
+// separate implementation per type, resolved at compile time, zero overhead
+template<typename T>
+void process(T& t) { t.speak(); }
+```
+
+Templates are resolved entirely at compile time — no vtable, no runtime lookup, zero overhead. This is why embedded engineers often prefer templates over virtual functions for performance-critical code.
+
+The tradeoff: templates generate separate code for each type — larger binary size. Virtual functions share one implementation — smaller binary but with runtime cost.
+
+### Multiple template parameters
+
+```cpp
+template<typename Key, typename Value>
+class Pair {
+    Key m_key;
+    Value m_value;
+public:
+    Pair(Key k, Value v) : m_key(k), m_value(v) { }
+};
+
+Pair<std::string, int> p("age", 28);
+```
+
+`std::unordered_map<Key, Value>` uses two template parameters exactly like this.
+
+### Non-type template parameters
+
+Templates can also take values, not just types:
+
+```cpp
+template<typename T, int SIZE>
+class FixedBuffer {
+    T m_data[SIZE];
+public:
+    int size() const { return SIZE; }
+};
+
+FixedBuffer<uint8_t, 256> buf;   // 256-byte buffer, size known at compile time
+```
+
+This is how `std::array<int, 5>` works — the size is a non-type template parameter baked in at compile time. Very common in embedded work for fixed-size buffers with no heap allocation.
+
+### Template specialization
+
+You can provide a specific implementation for a particular type:
+
+```cpp
+template<typename T>
+void print(T val) {
+    std::cout << val << std::endl;
+}
+
+// specialization for bool — print true/false instead of 1/0
+template<>
+void print<bool>(bool val) {
+    std::cout << (val ? "true" : "false") << std::endl;
+}
+
+print(42);     // uses general template — prints 42
+print(true);   // uses specialization — prints true
+```
+
+---
+
 ## Move Semantics
 
 Move semantics let you transfer ownership of resources instead of copying them. If an object is about to be destroyed anyway, why copy its data? Just take it.
