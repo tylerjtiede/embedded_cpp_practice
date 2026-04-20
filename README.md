@@ -2112,6 +2112,101 @@ public:
 
 ## Common C++ Pitfalls and Best Practices
 
+### nullptr vs NULL vs 0
+
+`NULL` is typically just `#define NULL 0` — an integer. This causes ambiguity with overloaded functions:
+
+```cpp
+void foo(int x)    { std::cout << "int" << std::endl; }
+void foo(int* ptr) { std::cout << "pointer" << std::endl; }
+
+foo(NULL);     // ambiguous — is it 0 the int or 0 the null pointer? compile error
+foo(nullptr);  // unambiguous — clearly a null pointer, calls foo(int*)
+foo(0);        // calls foo(int) — 0 is an integer
+```
+
+`nullptr` was introduced in C++11 to fix this. It has its own type `std::nullptr_t` which only converts to pointer types, never to integers. Always use `nullptr` — never `NULL` or `0` for pointers.
+
+### Moving a const object — silent copy fallback
+
+You cannot move a const object — but it doesn't give a compile error. It silently falls back to copying instead:
+
+```cpp
+const std::vector<int> v = {1, 2, 3};
+std::vector<int> v2 = std::move(v);   // looks like a move
+                                       // actually COPIES — const prevents move constructor
+                                       // falls back to copy constructor silently
+```
+
+The move constructor takes `T&&` — a non-const rvalue reference. A const object can't bind to that, so the compiler falls back to the copy constructor which takes `const T&`. No error, no warning — silent copy.
+
+If the copy constructor is deleted, then it would fail to compile.
+
+### Size of an empty class
+
+An empty class with no data members and no virtual functions has size 1, not 0. The standard prohibits two distinct objects from having the same address, so every object must occupy at least 1 byte:
+
+```cpp
+class Empty { };
+sizeof(Empty);   // 1 — guaranteed by standard
+
+class WithVirtual {
+    virtual void foo() { }
+};
+sizeof(WithVirtual);   // 8 on 64-bit — just the vtable pointer
+                       // 4 on 32-bit
+```
+
+Adding virtual functions adds exactly one pointer regardless of how many virtual functions there are — the vtable pointer.
+
+### Calling a pure virtual function in a constructor — undefined behavior
+
+Calling a virtual function in a constructor calls the base version, not the derived (vtable not fully set up yet). Calling a PURE virtual function in a constructor is undefined behavior — no implementation exists to call:
+
+```cpp
+class Base {
+public:
+    Base() { foo(); }          // calls foo() during Base construction
+    virtual void foo() = 0;    // pure virtual — no implementation in Base
+};
+
+class Derived : public Base {
+    void foo() override { }    // exists, but Derived not constructed yet when Base() runs
+};
+
+Derived d;   // undefined behavior — Base() tries to call pure virtual foo()
+             // Derived::foo() doesn't exist yet at this point
+```
+
+### Virtual dispatch — double indirection cost
+
+When calling a virtual function through a pointer, two pointer dereferences occur:
+1. Follow the vtable pointer stored in the object → find the vtable
+2. Follow the function pointer in the vtable → find the actual function
+
+This is called **double indirection**. Each dereference can cause a cache miss — the CPU may need to fetch data from RAM rather than cache. Non-virtual calls go directly to the function address — zero indirection, faster.
+
+```
+non-virtual call:  CPU -> function          (direct, one step)
+virtual call:      CPU -> vtable -> function (indirect, two steps, potential cache misses)
+```
+
+This is why virtual functions have overhead and why embedded engineers avoid them in tight loops.
+
+### Lambda syntax
+
+```cpp
+[capture](params) -> return_type { body }
+```
+
+What can be omitted:
+- Parameters `()` — if no parameters needed: `[]{ return 42; }`
+- Return type `-> type` — compiler deduces it automatically
+
+What cannot be omitted:
+- Capture clause `[]` — required even if empty
+- Body `{}` — required even if empty
+
 ### std::endl vs \n
 
 `std::endl` does two things — prints a newline AND flushes the output buffer. Flushing is expensive, especially in a loop. Just use `\n`:
@@ -2199,6 +2294,82 @@ std::vector<int> makeVector() {
 ```
 
 This is one of the few absolute rules: never `std::move` a local variable in a return statement.
+
+### nullptr vs NULL vs 0
+
+`NULL` is typically just `#define NULL 0` — an integer. This causes ambiguity with overloaded functions:
+
+```cpp
+void foo(int x) { }
+void foo(int* ptr) { }
+
+foo(NULL);     // ambiguous — is it 0 the int, or 0 the null pointer?
+foo(nullptr);  // unambiguous — clearly a null pointer, won't match int overload
+```
+
+`nullptr` was introduced in C++11 to fix this. It has its own type `std::nullptr_t` which only converts to pointer types, never to integers. Always use `nullptr` over `NULL` or `0` for null pointers.
+
+### Size of an empty class
+
+An empty class with no data members and no virtual functions has size 1, not 0. The C++ standard prohibits two distinct objects from having the same address, so every object must occupy at least 1 byte:
+
+```cpp
+class Empty { };
+sizeof(Empty);   // 1 — minimum possible size
+
+class WithVirtual {
+    virtual void foo() { }
+};
+sizeof(WithVirtual);   // 8 on 64-bit — just the vtable pointer
+                       // 4 on 32-bit
+```
+
+Adding virtual functions adds exactly one pointer (the vtable pointer) regardless of how many virtual functions there are.
+
+### Moving a const object — silent fallback to copy
+
+You cannot move a const object — but it doesn't give a compile error. It silently falls back to copying:
+
+```cpp
+const std::vector<int> v = {1, 2, 3};
+std::vector<int> v2 = std::move(v);   // no compile error
+                                       // but doesn't move — copies instead
+                                       // const prevents the move constructor
+                                       // silently falls back to copy constructor
+```
+
+This is a subtle gotcha — you think you're moving for performance but you're actually copying. The only time it fails to compile is if the copy constructor is also deleted.
+
+### Calling a pure virtual function in a constructor — undefined behavior
+
+Calling any virtual function in a constructor calls the base version, not the derived. Calling a PURE virtual function in a constructor is undefined behavior:
+
+```cpp
+class Base {
+public:
+    Base() { foo(); }           // calls foo() during Base construction
+    virtual void foo() = 0;     // pure virtual — no implementation in Base
+};
+
+class Derived : public Base {
+public:
+    void foo() override { std::cout << "Derived" << std::endl; }
+};
+
+Derived d;   // undefined behavior — Base() tries to call pure virtual foo()
+             // Derived hasn't been constructed yet, Derived::foo() doesn't exist yet
+```
+
+### Virtual dispatch — double indirection cost
+
+Non-virtual call — zero indirection, goes directly to the function at compile time.
+
+Virtual call — two pointer dereferences at runtime:
+```
+call foo() -> follow vtable pointer in object -> follow function pointer in vtable -> jump
+```
+
+This double indirection can cause instruction cache misses. For tight loops on embedded hardware this is a real cost — why templates are preferred over virtual functions in performance-critical embedded code.
 
 ### shared_ptr is NOT fully thread safe
 
